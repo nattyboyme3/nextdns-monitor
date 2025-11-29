@@ -81,7 +81,7 @@ class NextDNSLogFetcher:
             body = resp.json()
             data = body.get("data", [])
             for obj in data:
-                device_name = ""
+                device_name = "unknown"
                 reason_names_str = ""
                 if obj.get("reasons"):
                     reason_names = [ x.get('name') for x in obj.get("reasons", []) ]
