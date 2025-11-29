@@ -1,8 +1,6 @@
 import dotenv
 import sys
-
 import pytz
-
 import nextdns_logs
 import os
 import logging
