@@ -128,7 +128,7 @@ def notify(critical_info: DataFrame, warning_info: DataFrame, gap_info: DataFram
         if not subject:
             subject = "🟠NextDNS Warnings Detected"
         for _, row in warning_info.iterrows():
-            line = (f"- {row['count']}x hits on monitored domain {row['root']} "
+            line = (f"\n\t● {row['count']}x hits on monitored domain {row['root']} "
                     f"on device {row['device_name']} "
                     f"between {row['first_seen'].strftime('%m/%d, %H:%M')} "
                     f"and {row['last_seen'].strftime('%H:%M')}")
@@ -138,7 +138,7 @@ def notify(critical_info: DataFrame, warning_info: DataFrame, gap_info: DataFram
         if not subject:
             subject = "🟠NextDNS Stoppages Detected"
         for _, row in gap_info.iterrows():
-            line = (f"- {row['device_name']} sent no logs for {row['gap_duration_minutes']:.1f} minutes "
+            line = (f"\n\t● {row['device_name']} sent no logs for {row['gap_duration_minutes']:.1f} minutes "
                     f"from {row['gap_start'].strftime('%m/%d, %H:%M')} "
                     f"to {row['gap_end'].strftime('%H:%M')}")
             email_lines.append(line)
