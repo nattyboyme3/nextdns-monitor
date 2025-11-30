@@ -34,7 +34,7 @@ def main(args):
         warning_results = df[df["root"].isin(warning_domains)]
         warning_info = process_result_info(warning_results,[ "device_name", "root"], timezone_str)
         gap_info = gap_analysis(df, timezone, threshold_minutes=gap_minute_threshold)
-        notify_if_necessary(critical_info, warning_info, gap_info, df)
+        notify(critical_info, warning_info, gap_info, df)
     finally:
         fetcher.close()
 
@@ -100,19 +100,17 @@ def analyze_top_categories_and_sites(df: pd.DataFrame) -> str:
         device_df = allowed_df[allowed_df['device_name'] == device]
 
         # Find top 5 sites for this device
-        site_counts = device_df.groupby('root').size().sort_values(ascending=False).head(5)
-
+        site_counts = device_df.groupby('root').size().sort_values(ascending=False).head(10)
         if site_counts.empty:
             continue
-
         # Format sites inline
-        sites_str = ", ".join([f"{site}: {cnt}" for site, cnt in site_counts.items()])
+        sites_str = "\t● ".join([f"{site}: {cnt}" for site, cnt in site_counts.items()])
         lines.append(f"{device}: {sites_str}")
 
     return "\n".join(lines)
 
 
-def notify_if_necessary(critical_info: DataFrame, warning_info: DataFrame, gap_info: DataFrame, df: DataFrame):
+def notify(critical_info: DataFrame, warning_info: DataFrame, gap_info: DataFrame, df: DataFrame):
     subject = None
     email_lines = []
     if not critical_info.empty:
