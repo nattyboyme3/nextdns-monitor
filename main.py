@@ -46,8 +46,8 @@ def process_result_info(result_info: pd.DataFrame, group_fields: list[str], time
     processed_info["first_seen"] = pd.to_datetime(processed_info["first_seen"])
     processed_info["last_seen"] = pd.to_datetime(processed_info["last_seen"])
     processed_info = processed_info.assign(
-        first_seen=lambda x: x.first_seen.dt.tz_convert(timezone),
-        last_seen=lambda x: x.last_seen.dt.tz_convert(timezone),
+        first_seen=lambda x: x.first_seen.dt.tz_localize('UTC').dt.tz_convert(timezone),
+        last_seen=lambda x: x.last_seen.dt.tz_localize('UTC').dt.tz_convert(timezone),
     )
     return processed_info
 
