@@ -15,16 +15,19 @@ from email.message import EmailMessage
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.INFO)
-
+ENABLE_ANALYSIS_LOGS = False
 
 def main(args):
     dotenv.load_dotenv()
     fetcher =  nextdns_logs.NextDNSLogFetcher(os.environ["API_KEY"], os.environ.get("PROFILE_ID"))
     critical_categories = os.environ.get("CRITICAL_CATEGORIES", "").split(",")
     warning_domains = os.environ.get("WARNING_DOMAINS", "").split(",")
+    warning_hit_limit = int(os.environ.get("WARNING_HIT_LIMIT", "15"))
     timezone_str = os.environ.get("TIMEZONE", "America/New_York")
     gap_minute_threshold = int(os.environ.get("GAP_MINUTE_THRESHOLD", "60"))
+    gap_exempt_devices = os.environ.get("GAP_EXEMPT_DEVICES", "").split(",")
     timezone = pytz.timezone(timezone_str)
+
     try:
         yesterday_logs = fetcher.fetch_logs_for_previous_day(per_page=500, tz=timezone)
         logger.info(f"Fetched {len(yesterday_logs)} logs from previous day.")
@@ -33,7 +36,9 @@ def main(args):
         critical_info = process_result_info(critical_results, ["reason_name", "device_name", "root"], timezone_str)
         warning_results = df[df["root"].isin(warning_domains)]
         warning_info = process_result_info(warning_results,[ "device_name", "root"], timezone_str)
+        warning_info = warning_info[warning_info["count"] > warning_hit_limit]
         gap_info = gap_analysis(df, timezone, threshold_minutes=gap_minute_threshold)
+        gap_info = gap_info[gap_info["device_name"].apply(lambda x: x not in gap_exempt_devices)]
         notify(critical_info, warning_info, gap_info, df)
     finally:
         fetcher.close()
@@ -84,29 +89,18 @@ def analyze_top_categories_and_sites(df: pd.DataFrame) -> str:
     """
     if df.empty:
         return "\n--- Usage Analytics ---\nNo data available for analysis."
-
-    # Filter out blocked requests
     allowed_df = df[df['status'] != 'blocked'].copy()
-
     if allowed_df.empty:
         return "\n--- Usage Analytics ---\nNo allowed requests found."
-
     lines = ["\n--- Usage Analytics ---"]
-
-    # Get unique devices
     devices = allowed_df['device_name'].unique()
-
     for device in sorted(devices):
         device_df = allowed_df[allowed_df['device_name'] == device]
-
-        # Find top 5 sites for this device
         site_counts = device_df.groupby('root').size().sort_values(ascending=False).head(10)
         if site_counts.empty:
             continue
-        # Format sites inline
         sites_str = "\n\t● ".join([f"{site}: {cnt}" for site, cnt in site_counts.items()])
         lines.append(f"{device}: {sites_str}")
-
     return "\n".join(lines)
 
 
@@ -128,9 +122,9 @@ def notify(critical_info: DataFrame, warning_info: DataFrame, gap_info: DataFram
         if not subject:
             subject = "🟠NextDNS Warnings Detected"
         for _, row in warning_info.iterrows():
-            line = (f"\n\t● {row['count']}x hits on monitored domain {row['root']} "
+            line = (f"\t● {row['count']}x hits on monitored domain {row['root']} "
                     f"on device {row['device_name']} "
-                    f"between {row['first_seen'].strftime('%m/%d, %H:%M')} "
+                    f"on {row['first_seen'].strftime('%m/%d')} between {row['first_seen'].strftime('%H:%M')} "
                     f"and {row['last_seen'].strftime('%H:%M')}")
             email_lines.append(line)
     if not gap_info.empty:
@@ -138,19 +132,20 @@ def notify(critical_info: DataFrame, warning_info: DataFrame, gap_info: DataFram
         if not subject:
             subject = "🟠NextDNS Stoppages Detected"
         for _, row in gap_info.iterrows():
-            line = (f"\n\t● {row['device_name']} sent no logs for {row['gap_duration_minutes']:.1f} minutes "
-                    f"from {row['gap_start'].strftime('%m/%d, %H:%M')} "
+            line = (f"\t● {row['device_name']} sent no logs for {row['gap_duration_minutes']:.1f} minutes "
+                    f"on {row['gap_start'].strftime('%m/%d')} from {row['gap_start'].strftime('%H:%M')} "
                     f"to {row['gap_end'].strftime('%H:%M')}")
             email_lines.append(line)
     if not subject:
         email_lines = ["No notifications about NextDNS activity for yesterday."]
         subject = "🟢No Suspicious NextDNS Activity"
 
-    # Add analytics section to all emails
-    analytics_report = analyze_top_categories_and_sites(df)
-    email_lines.append(analytics_report)
-
     [logger.info(x) for x in email_lines]
+    analytics_report = analyze_top_categories_and_sites(df)
+    logger.info(analytics_report)
+    if ENABLE_ANALYSIS_LOGS:
+        email_lines.append(analytics_report)
+
     msg = EmailMessage()
     msg["From"] = os.environ.get("FROM_EMAIL")
     msg["To"] = os.environ.get("TO_EMAIL")
