@@ -104,7 +104,7 @@ def analyze_top_categories_and_sites(df: pd.DataFrame) -> str:
         if site_counts.empty:
             continue
         # Format sites inline
-        sites_str = "\t● ".join([f"{site}: {cnt}" for site, cnt in site_counts.items()])
+        sites_str = "\n\t● ".join([f"{site}: {cnt}" for site, cnt in site_counts.items()])
         lines.append(f"{device}: {sites_str}")
 
     return "\n".join(lines)
