@@ -15,7 +15,7 @@ from email.message import EmailMessage
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.INFO)
-ENABLE_ANALYSIS_LOGS = False
+ENABLE_ANALYSIS_LOGS = True
 
 def main(args):
     dotenv.load_dotenv()
