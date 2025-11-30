@@ -11,9 +11,11 @@ from dataclasses import asdict
 import smtplib
 from email.message import EmailMessage
 
+
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.INFO)
+
 
 def main(args):
     dotenv.load_dotenv()
@@ -46,10 +48,11 @@ def process_result_info(result_info: pd.DataFrame, group_fields: list[str], time
     processed_info["first_seen"] = pd.to_datetime(processed_info["first_seen"])
     processed_info["last_seen"] = pd.to_datetime(processed_info["last_seen"])
     processed_info = processed_info.assign(
-        first_seen=lambda x: x.first_seen.dt.tz_localize('UTC').dt.tz_convert(timezone),
-        last_seen=lambda x: x.last_seen.dt.tz_localize('UTC').dt.tz_convert(timezone),
+        first_seen=lambda df: ensure_series_tz(df["first_seen"], source_tz="UTC", target_tz=timezone),
+        last_seen=lambda df: ensure_series_tz(df["last_seen"], source_tz="UTC", target_tz=timezone),
     )
     return processed_info
+
 
 def gap_analysis(logs: pd.DataFrame, timezone: pytz.BaseTzInfo, threshold_minutes: int = 60) -> pd.DataFrame:
     if logs.empty or "device_name" not in logs.columns:
@@ -70,7 +73,6 @@ def gap_analysis(logs: pd.DataFrame, timezone: pytz.BaseTzInfo, threshold_minute
     gaps["gap_start"] = pd.to_datetime(gaps["prev_timestamp"]).dt.tz_convert(timezone)
     gaps["gap_end"] = pd.to_datetime(gaps["timestamp"]).dt.tz_convert(timezone)
     gaps["gap_duration_minutes"] = gaps["time_diff"]
-
     return gaps[["device_name", "gap_start", "gap_end", "gap_duration_minutes"]]
 
 
@@ -81,15 +83,15 @@ def analyze_top_categories_and_sites(df: pd.DataFrame) -> str:
     Returns a formatted string for inclusion in email notifications.
     """
     if df.empty:
-        return "\n\n--- Usage Analytics ---\nNo data available for analysis."
+        return "\n--- Usage Analytics ---\nNo data available for analysis."
 
     # Filter out blocked requests
     allowed_df = df[df['status'] != 'blocked'].copy()
 
     if allowed_df.empty:
-        return "\n\n--- Usage Analytics ---\nNo allowed requests found."
+        return "\n--- Usage Analytics ---\nNo allowed requests found."
 
-    lines = ["\n\n--- Usage Analytics ---"]
+    lines = ["\n--- Usage Analytics ---"]
 
     # Get unique devices
     devices = allowed_df['device_name'].unique()
@@ -105,9 +107,10 @@ def analyze_top_categories_and_sites(df: pd.DataFrame) -> str:
 
         # Format sites inline
         sites_str = ", ".join([f"{site}: {cnt}" for site, cnt in site_counts.items()])
-        lines.append(f"\n{device}: {sites_str}")
+        lines.append(f"{device}: {sites_str}")
 
     return "\n".join(lines)
+
 
 def notify_if_necessary(critical_info: DataFrame, warning_info: DataFrame, gap_info: DataFrame, df: DataFrame):
     subject = None
@@ -159,6 +162,11 @@ def notify_if_necessary(critical_info: DataFrame, warning_info: DataFrame, gap_i
         s.login(os.environ.get("FROM_EMAIL"), os.environ.get("APP_PASSWORD"))  # use app password
         s.send_message(msg)
 
+
+def ensure_series_tz(s: pd.Series, source_tz: str = "UTC", target_tz: str | None = None) -> pd.Series:
+    # 1) coerce strings/objects -> datetimes (keeps tz-awareness if present)
+    s = pd.to_datetime(s, errors="coerce", utc=True).dt.tz_convert(target_tz)
+    return s
 
 if __name__ == "__main__":
     main(sys.argv[1:])
